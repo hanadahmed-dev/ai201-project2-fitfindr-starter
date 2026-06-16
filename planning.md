@@ -16,55 +16,74 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
-Searches the mock secondhand listings dataset for items that match the user's requested description, size, and maximum price. It filters listings using fields such as title, description, category, style tags, size, colors, brand, platform, condition, and price.
-
+Searches the mock secondhand listings dataset for items matching the user's requested item description, size, and maximum price. It uses fields such as title, description, category, style tags, size, price, colors, brand, condition, and platform.
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `description` (str): The item or style the user is looking for, such as "vintage graphic tee" or "black leather jacket".
-- `size` (str): The user's desired size, such as "S", "M", "L", or a shoe size if applicable.
+- `description` (str): The item or style the user is looking for, such as "vintage graphic tee", "black boots", or "denim jacket".
+- `size` (str): The desired size, such as "M", "S/M", "L", "W30 L30", or a shoe size like "US 7".
 - `max_price` (float): The highest price the user is willing to pay.
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
-A list of matching listing dictionaries. Each result should include fields such as id, title, description, category, style_tags, size, condition, price, colors, brand, and platform.
+A list of matching listing dictionaries sorted by relevance. Each listing contains:
+
+id (str): Unique listing id.
+title (str): Listing title.
+description (str): Listing description.
+category (str): One of tops, bottoms, outerwear, shoes, or accessories.
+style_tags (list[str]): Style labels such as vintage, streetwear, grunge, y2k, or cottagecore.
+size (str): Size listed by the seller.
+condition (str): Condition such as excellent, good, or fair.
+price (float): Listing price.
+colors (list[str]): Main colors in the item.
+brand (str or None): Brand name if available.
+platform (str): Platform such as depop, thredUp, or poshmark.
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-If no listings match, the tool should return an empty list or a clear no-results response. The agent should explain that no matching items were found and suggest changing the search, such as increasing the budget, broadening the description, or relaxing the size filter. The agent should not call suggest_outfit if there is no item to style.
+If no listings match, the tool returns an empty list. The agent should tell the user no matching listings were found and suggest specific next steps, such as increasing the budget, broadening the description, or relaxing the size filter. The agent should stop and not call suggest_outfit or create_fit_card.
 ---
 
 ### Tool 2: suggest_outfit
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
-Suggests one or more outfit combinations using the newly found item and the user's current wardrobe. It should choose wardrobe pieces that match the new item's category, colors, and style tags.
+Suggests a complete outfit using the selected listing and the user's wardrobe. It chooses wardrobe pieces that pair well with the new item based on category, color, style tags, and basic outfit structure.
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `new_item` (dict): The listing selected from search_listings, including its title, category, colors, price, platform, and style tags.
-- `wardrobe` (dict): The user's wardrobe data containing owned clothing items and their fields, such as category, colors, style tags, and notes.
+- `new_item` (dict): The selected listing returned by search_listings. It includes fields such as title, category, style tags, size, price, colors, brand, condition, and platform.
+- `wardrobe` (dict): The user's wardrobe data. It contains an items list, where each item has an id, name, category, colors, style tags, and notes.
 
 **What it returns:**
 <!-- Describe the return value -->
-An outfit suggestion that includes the new item, selected wardrobe pieces, and a short styling explanation. The return value should be structured enough for create_fit_card to use in the next step.
+A structured outfit suggestion dictionary containing:
+
+new_item (dict): The thrifted item being styled.
+wardrobe_items (list[dict]): The wardrobe pieces chosen to pair with the new item.
+styling_notes (str): A short explanation of why the outfit works.
+vibe (str): A style label such as "90s grunge", "casual streetwear", or "cozy vintage".
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the wardrobe is empty or no outfit can be suggested? -->
-If the wardrobe is empty or too minimal, the tool should still suggest a simple outfit using generic basics, or ask the user to add wardrobe details. It should not crash if the wardrobe has no usable items.
+If the wardrobe is empty or too limited, the tool should return a limited styling suggestion using generic basics and explain that the recommendation is less personalized. The agent should tell the user that adding wardrobe items would improve the suggestion.
 ---
 
 ### Tool 3: create_fit_card
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
-Creates a short, shareable outfit description based on the selected thrifted item and the outfit suggestion. The output should sound like a social caption rather than a technical product description.
+Creates a short, shareable outfit caption based on the outfit generated by suggest_outfit. The fit card should sound like a social media caption rather than a technical product description.
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `outfit` (...): The outfit suggestion returned by suggest_outfit, including the new item, wardrobe pieces, and styling notes.
+- `outfit` (...): The outfit suggestion returned by suggest_outfit, including the selected thrifted item, chosen wardrobe items, styling notes, and overall vibe.
 
 **What it returns:**
 <!-- Describe the return value -->
-A short fit card or caption describing the completed outfit. The fit card should highlight the overall style and outfit combination in a way that is easy to share.
+A short fit card string or dictionary containing:
+
+caption (str): A concise, shareable outfit caption.
+summary (str): A one-sentence summary of the look.
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the outfit data is incomplete? -->
-If the outfit data is missing or incomplete, the tool should return a clear message explaining that a complete outfit is required before a fit card can be generated. The agent should ask the user for more information instead of creating a misleading caption.
+If the outfit data is missing or incomplete, the tool returns a clear error message explaining that a complete outfit is required before generating a fit card. The agent should ask the user to search for an item or generate an outfit first.
 ---
 
 ### Additional Tools (if any)
@@ -77,14 +96,41 @@ If the outfit data is missing or incomplete, the tool should return a clear mess
 
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
-The agent first determines whether the user is searching for an item. If so, it calls search_listings. If a matching item is found, the agent stores the selected listing and calls suggest_outfit. If an outfit is successfully generated, the agent calls create_fit_card. The loop ends when either a complete recommendation is produced or a failure condition is encountered.
+The agent uses a conditional planning loop based on the current session state and the result of the previous tool call.
+
+Start with the user's query.
+Parse or infer description, size, max_price, and wardrobe details from the user input.
+If there is no selected item in state, call search_listings(description, size, max_price).
+After search_listings returns, check whether the results list is empty.
+If results is empty, store an error message in session state and return a response telling the user no listings were found. Suggest increasing the budget, using a broader item description, or relaxing the size filter. Stop the loop.
+If results contains listings, select the top result as selected_item, store it in session state, and continue.
+If selected_item exists and no outfit has been generated yet, call suggest_outfit(new_item=selected_item, wardrobe=wardrobe).
+After suggest_outfit returns, check whether the result contains a usable outfit.
+If the wardrobe is empty or no strong outfit can be created, return a limited outfit suggestion and explain the limitation.
+If a complete outfit is created, store it as outfit in session state and continue.
+If outfit exists and no fit card has been created yet, call create_fit_card(outfit).
+Store the fit card in session state and return the final response to the user with the selected listing, outfit suggestion, and fit card.
+The loop is done when a final response is returned or when an error path stops the workflow early.
 ---
 
 ## State Management
 
 **How does information from one tool get passed to the next?**
 <!-- Describe how your agent stores and accesses state within a session. What data is tracked? How is it passed between tool calls? -->
-The agent stores information from previous tool calls in session state. The selected item returned by search_listings is stored and passed to suggest_outfit. The outfit returned by suggest_outfit is stored and passed to create_fit_card. This allows the user to complete a multi-step workflow without re-entering information.
+The agent stores session data in a state dictionary during the interaction. The state tracks:
+
+user_query: The original user request.
+description: The item description extracted from the request.
+size: The requested size.
+max_price: The user's budget.
+wardrobe: The user's wardrobe data.
+search_results: The list returned by search_listings.
+selected_item: The top listing chosen from search results.
+outfit: The outfit returned by suggest_outfit.
+fit_card: The caption returned by create_fit_card.
+error: Any error or limitation message.
+
+The output of each tool becomes input for the next tool. For example, search_listings returns listings, the top listing becomes selected_item, selected_item is passed into suggest_outfit, and the resulting outfit is passed into create_fit_card.
 ---
 
 ## Error Handling
@@ -93,9 +139,9 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | Inform the user that no listings were found and suggest adjusting filters.|
-| suggest_outfit | Wardrobe is empty | Explain that the wardrobe is empty and provide a generic styling suggestion or request more information.|
-| create_fit_card | Outfit input is missing or incomplete | Explain that a complete outfit is required before generating a fit card.|
+| search_listings | No results match the query | Say: "I couldn't find any listings that match that item, size, and budget. Try increasing your budget, using a broader description, or relaxing the size filter." Stop the workflow and do not call the outfit or fit card tools.|
+| suggest_outfit | Wardrobe is empty | Say: "Your wardrobe is empty, so I can only give a general styling suggestion. Add wardrobe items for a more personalized outfit." Then provide a basic outfit suggestion using generic wardrobe staples.|
+| create_fit_card | Outfit input is missing or incomplete | Say: "I need a complete outfit before I can generate a fit card. Search for an item and create an outfit first." Stop fit card generation.|
 
 ---
 
@@ -110,7 +156,6 @@ For each tool, describe the specific failure mode you're handling and what the a
      sketch are all fine. You'll share this diagram with an AI tool when asking it to implement
      the planning loop and each individual tool. -->
 
-     ```text
 User Request
      |
      v
@@ -167,9 +212,13 @@ Final Response to User
      before trusting it" is a plan. -->
 
 **Milestone 3 — Individual tool implementations:**
+I will use ChatGPT to help implement each tool separately. For search_listings, I will provide the Tool 1 spec, the listing fields from data/listings.json, and the load_listings() helper from utils/data_loader.py. I expect the AI to produce a function that filters by description, size, and max price, sorts results by relevance, and returns a list of listing dictionaries. I will verify it by testing a successful query, a price-limited query, and a query with no matches.
 
+For suggest_outfit, I will provide the Tool 2 spec and the wardrobe schema. I expect the AI to produce a function that accepts a selected listing and wardrobe dictionary, chooses compatible wardrobe items, and returns a structured outfit suggestion. I will verify it using both get_example_wardrobe() and get_empty_wardrobe().
+
+For create_fit_card, I will provide the Tool 3 spec and examples of the tone I want. I expect the AI to produce a function that turns an outfit dictionary into a short social-style caption. I will verify that the output uses information from the outfit and changes when the outfit changes.
 **Milestone 4 — Planning loop and state management:**
-
+I will use ChatGPT to help implement the planning loop after the tools work individually. I will provide the Planning Loop, State Management, Error Handling, and Architecture sections from this planning document. I expect the AI to produce an agent loop that calls tools conditionally based on session state and previous results. I will verify the loop with three tests: a full successful flow that uses all three tools, a no-results search that stops early, and an empty wardrobe case that returns a limited suggestion instead of crashing.
 ---
 
 ## A Complete Interaction (Step by Step)
@@ -180,7 +229,7 @@ Write out what a full user interaction looks like from start to finish — tool 
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
-The agent reads the request and identifies that the user wants to search for a clothing item. It extracts the item description, size if available, and maximum price. The agent calls:
+The agent determines that the user is searching for a clothing item and calls:
 
 search_listings(
     description="vintage graphic tee",
@@ -188,17 +237,17 @@ search_listings(
     max_price=30.0
 )
 
-The tool searches data/listings.json using fields such as title, description, category, style tags, size, price, colors, brand, and platform.
+The tool searches the listings dataset using fields such as title, description, style tags, size, and price. It returns matching items sorted by relevance.
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
-If matching listings are found, the agent selects the best result and saves it in session state as selected_item. For example, the selected item might be a graphic tee from Depop under the user's budget. The agent then calls:
+If matching listings are found, the agent selects the best result and stores it in session state as selected_item. The agent then calls:
 
 suggest_outfit(
     new_item=selected_item,
     wardrobe=user_wardrobe
 )
 
-The wardrobe comes from the user's wardrobe data, using the same structure shown in data/wardrobe_schema.json.
+The tool uses the selected item and the user's wardrobe to create an outfit recommendation. For example, it may pair a graphic tee with baggy jeans, chunky sneakers, and an outerwear layer that matches the style.
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
 The outfit suggestion returned by suggest_outfit is stored in session state as outfit. The agent then calls:
@@ -210,10 +259,4 @@ create_fit_card(
 The tool generates a short, shareable caption based on the completed outfit.
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
-The user receives:
-
-The recommended thrift listing
-A suggested outfit using their wardrobe
-A short social-style fit card caption
-
-If search_listings returns no results, the agent explains that no matching items were found and suggests adjusting the budget, size, or item description. The agent then stops and does not call suggest_outfit or create_fit_card.
+The user receives the recommended thrift listing, a suggested outfit using their wardrobe, and a short social-style fit card caption. If search_listings returns no results, the agent explains that no matching items were found and suggests adjusting the budget, size, or item description. The agent then stops and does not call suggest_outfit or create_fit_card.
